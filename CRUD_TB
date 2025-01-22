@@ -1,0 +1,99 @@
+#! /bin/bash
+
+
+while true; do
+    echo "============================="
+    echo "       Table Management      "
+    echo "============================="
+    
+    select choice in CreateTB ListTB DropTB InsertIntoTB SelectFromTB DeleteFromTB UpdateTB Exit; do
+        case $REPLY in
+        "CreateTB")  
+            read -p "Enter Table Name: " table_name
+            if [[ -z "$table_name" ]]; then
+                echo "Table name cannot be empty."
+                break
+            fi
+            if [[ ! "$table_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+                echo "Invalid table name. Only alphanumeric characters, underscores, and hyphens are allowed."
+                break
+            fi
+            if [[ -f $table_name ]]; then
+                echo "Table already exists."
+            else
+                touch "$table_name" && echo "Table '$table_name' created successfully." || echo "Failed to create table."
+            fi
+            break
+        ;;
+        "ListTB") 
+            num_tables=$(ls | wc -l)
+            if [[ $num_tables -eq 0 ]]; then
+                echo "No tables found in the database."
+            else
+                echo "Tables in the database:"
+                ls
+            fi
+            break
+        ;;
+        "DropTB")
+            read -p "Enter Table Name to Drop: " table_name
+            if [[ -f $table_name ]]; then
+                rm "$table_name" && echo "Table '$table_name' deleted successfully." || echo "Failed to delete table."
+            else
+                echo "Table does not exist."
+            fi
+            break
+        ;;
+        "InsertIntoTB")
+            read -p "Enter Table Name: " table_name
+            if [[ -f $table_name ]]; then
+                read -p "Enter data to insert (comma-separated): " data
+                echo "$data" >> "$table_name" && echo "Data inserted successfully." || echo "Failed to insert data."
+            else
+                echo "Table does not exist."
+            fi
+            break
+        ;;
+        "SelectFromTB")
+            read -p "Enter Table Name: " table_name
+            if [[ -f $table_name ]]; then
+                echo "Contents of Table '$table_name':"
+                cat "$table_name"
+            else
+                echo "Table does not exist."
+            fi
+            break
+        ;;
+        "DeleteFromTB")
+            read -p "Enter Table Name: " table_name
+            if [[ -f $table_name ]]; then
+                read -p "Enter data to delete (exact match): " data
+                grep -v "^$data$" "$table_name" > temp_table && mv temp_table "$table_name"
+                echo "Matching data deleted successfully."
+            else
+                echo "Table does not exist."
+            fi
+            break
+        ;;
+        "UpdateTB")
+            read -p "Enter Table Name: " table_name
+            if [[ -f $table_name ]]; then
+                read -p "Enter data to replace: " old_data
+                read -p "Enter new data: " new_data
+                sed -i "s/^$old_data$/$new_data/" "$table_name" && echo "Table updated successfully." || echo "Failed to update table."
+            else
+                echo "Table does not exist."
+            fi
+            break
+        ;;
+        "Exit")
+            echo "Exiting Table Management Menu."
+            exit 0
+        ;;
+        *)
+            echo "Invalid option. Please select a valid option."
+            break
+        ;;
+        esac
+    done
+done
