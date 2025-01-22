@@ -1,99 +1,260 @@
 #!/bin/bash
+# Welcome message
+echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+echo "  Ready to manage your databases in Bash? Let's go! "
+echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 
-if [[ -e "/home/helmi/Courses/bash/Database" ]]
-then 
-	cd /home/helmi/Courses/bash/Database
-	echo Database is connected...
-else
+# Function to validate the database name
+validate_db_name() {
+    local name="$1"
 
-	mkdir /home/helmi/Courses/bash/Database
-	cd /home/helmi/Courses/bash/Database
-	echo Database is connected...
+    # Check if the name is empty
+    if [[ -z "$name" ]]; then
+        echo "Error: Database name can't be empty."
+        return 1
+    fi
 
-fi
+    # Verify if the name contains invalid characters (allow letters, numbers, underscores, and hyphens)
+    if [[ "$name" =~ [[:space:]] || "$name" =~ [^a-zA-Z0-9_-] ]]; then
+        echo "Error: Invalid database name. Use only letters, numbers, underscores (_), and hyphens (-)."
+        return 1
+    fi
 
-select var in CreateDB SelectDB CreateTB insertTB 
-do
-	case $var in
-	"CreateDB")
-		read -p "Please Enter Daatabase name: " DBName
-		if [[ -e $DBName ]]
-		then 
-			echo Database is already exist
-		else
-			mkdir $DBName
-			echo "Database is created Successfully"
-		fi
-	;;
-	"SelectDB")
-		read -p "Please Enter Daatabase name: " DBName
-		if [[ -e $DBName ]]
-		then 
-			cd $DBName
-			echo Connected to database $DBName
-		else
-			echo "Database is Not Exist"
-		fi
-	;;
-	"CreateTB")
-		read -p "Please Enter table name: " TBName
-		if [[ -e $TBName ]]
-		then 
-			echo table is already exist
-		else
-			read -p "please enter columns numbers: " colNum
-			flag=0
-			for ((i=0;i<$colNum;i++))
-			do
-				line=""
-				read -p "please Enter col number $((i+1)): " colData
-				line+=$colData:
-				read -p "please Enter Datatype of Col $colData: " datatypeCol
-				line+=$datatypeCol:
-				if [[ $flag -eq 0 ]]
-				then
-					read -p "Do you want to make $colData primary key: " pkCheck
-					if [[ $pkCheck =~ ^([yY][eE][sS]|[Yy]) ]] 
-					then
-						line+=pk
-						flag=1
-					fi
-				fi
-				echo $line >> .$TBName-metadata
-			done
-			
-		
-			touch $TBName
-			echo "Table is created Successfully"
-		fi
-	;;
-	"insertTB")
-		read -p "please Enter Table Name: " TBName
-		
-		if [[ -e $TBName ]]
-		then 
-			columnSize=`wc -l .student-metadata | cut -d" " -f1`
-			lineee=""
-			for ((i=0;i<columnSize;i++))
-			do
+    # Verify if the name starts with a number or symbol
+    if [[ "$name" =~ ^[0-9] || "$name" =~ ^[^a-zA-Z] ]]; then
+        echo "Error: Database name cannot start with a number or special symbol."
+        return 1
+    fi
 
-				line=`sed -n "$(echo $((i+1)))p" .student-metadata`
-				colName=`echo $line | cut -d: -f1`
-				colType=`echo $line | cut -d: -f2`
-				colPkCheck=`echo $line | cut -d: -f3`
-				read -p "please enter value for col $colName: " val
-				lineee+=$val:
-				#echo $colName $colType $colPkCheck
-			done
-			echo $lineee >> $TBName
-			echo "Data is inserted"
+    # Verify if the name is too long (max 255 characters)
+    if [[ ${#name} -gt 255 ]]; then
+        echo "Error: Database name is too long. Maximum length is 255 characters."
+        return 1
+    fi
 
-		else
-			echo table is not already exist
-		fi
-	;;
-	*)
-		echo UNKNOWN USER
-esac
+    # Verify for reserved names 
+    local reserved_names=("root" "admin" "system")
+    for reserved in "${reserved_names[@]}"; do
+        if [[ "$name" == "$reserved" ]]; then
+            echo "Error: '$name' is a reserved name and can't be used as database name."
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+# Function to check if the current user has write and execute permissions
+check_permissions() {
+    # Check if write and execute permissions exist in the current directory
+    if [[ ! -w . || ! -x . ]]; then
+        echo "Error: You do not have write or execute permissions in this directory."
+        return 1
+    fi
+    return 0
+}
+
+# Function to check if the current disk has enough space
+check_disk_space() {
+    # Minimum required space (in bytes)
+    local required_space=10000000  
+    local available_space=$(df . | awk 'NR==2 {print $4}')
+    if [[ $available_space -lt $required_space ]]; then
+        echo "Error: Not enough disk space to create the database."
+        return 1
+    fi
+    return 0
+}
+
+# Function to check if a directory exists and is accessible
+check_directory_access() {
+    local dir="$1"
+
+    # Ensure the directory exists
+    if [[ ! -d "$dir" ]]; then
+        echo "Error: Directory '$dir' does not exist."
+        return 1
+    fi
+
+    # Check if execute Permission exists on the directory
+    if [[ ! -x "$dir" ]]; then
+        echo "Error: You do not have execute permission on directory '$dir'."
+        return 1
+    fi
+
+    # Ensure the directory is not a system directory 
+    if [[ "$dir" =~ ^/(bin|etc|home) ]]; then
+        echo "Error: Cannot perform operation on system directory."
+        return 1
+    fi
+
+    return 0
+}
+
+# Function to check if a file exists and is executable
+check_file_executable() {
+    local file="$1"
+    if [[ ! -f "$file" ]]; then
+        echo "Error: File '$file' does not exist."
+        return 1
+    fi
+    if [[ ! -x "$file" ]]; then
+        echo "Error: You do not have execute permission on '$file'."
+        return 1
+    fi
+    return 0
+}
+
+# Function to check if path contains invalid characters
+check_for_invalid_characters_in_path() {
+    local path="$1"
+    # Check if the path contains spaces or special characters
+    if [[ "$path" =~ [[:space:]] ]]; then
+        echo "Error: Path cannot contain spaces."
+        return 1
+    fi
+    if [[ "$path" =~ [^a-zA-Z0-9/_-] ]]; then
+        echo "Error: Path contains invalid characters. Only alphanumeric, underscores (_), and hyphens (-) are allowed."
+        return 1
+    fi
+    return 0
+}
+
+# Function to check if the user has sudo privileges
+check_sudo_privileges() {
+    if ! sudo -v &>/dev/null; then
+        echo "Error: You need sudo privileges to perform this action."
+        return 1
+    fi
+    return 0
+}
+
+
+
+# Main Menu 
+while true; do
+    echo
+    echo "Select an option:"
+    select var in CreateDB ListDB SelectDB DropDB Exit; do
+        if [[ -n "$var" ]]; then
+            break  
+        fi
+        echo "Invalid option. Please select a valid choice."
+    done
+
+    # Case structure to handle different menu options
+    case $var in
+    "CreateDB")
+        # Option to create a new database
+        read -p "Please Enter Database name: " DBName
+
+        # Validate the database name input
+        if ! validate_db_name "$DBName"; then
+            continue  # If validation fails, ask for the name again
+        fi
+
+        # Check if there's enough disk space
+        if ! check_disk_space; then
+            continue
+        fi
+
+        # Check write and execute permissions in the current directory
+        if ! check_permissions; then
+            continue  
+        fi
+
+        # Verify if the database already exists
+        if [[ -d "$DBName" ]]; then
+            echo "Error: Database '$DBName' already exists. Please choose a different name."
+        else
+            # Create the database directory
+            mkdir "$DBName" && echo "Database '$DBName' created successfully." || echo "Error: Failed to create database."
+        fi
+    ;;
+    "ListDB")
+        # Option to list all existing databases
+        num_dirs=$(find . -maxdepth 1 -type d | wc -l)
+        if [[ $num_dirs -le 1 ]]; then
+            echo "No databases found."
+        else
+            echo "Number of Databases: $((num_dirs - 1))"
+            echo "List of Databases:"
+            find . -maxdepth 1 -type d -not -name "." | sed 's|^\./||'
+        fi
+    ;;
+
+    "SelectDB")
+        # Option to connect to a specific database
+        read -p "Please Enter Database name: " DBName
+
+        # Validate the database name input
+        if ! validate_db_name "$DBName"; then
+            continue  
+        fi
+
+        # Verify if the specified database exists and has execute permissions
+        if ! check_directory_access "$DBName"; then
+            continue
+        fi
+
+        # Change directory to the selected database
+        cd "$DBName" || { echo "Error: Failed to access database directory."; continue; }
+        echo "Connected to database '$DBName'."
+
+        # Check if CRUD_TB exists and is executable
+        if ! check_file_executable "../CRUD_TB"; then
+            cd ..  # Return to the main directory
+            continue
+        fi
+
+        # Execute the CRUD_TB script
+        bash ../CRUD_TB
+        cd .. || echo "Error: Failed to return to the main directory."
+    ;;
+    "DropDB")
+        # Option to delete an existing database
+        read -p "Please Enter Database name: " DBName
+
+        # Validate the database name input
+        if ! validate_db_name "$DBName"; then
+            continue  # If validation fails, ask for the name again
+        fi
+
+        # Verify if the specified database exists
+        if [[ -d "$DBName" ]]; then
+            # Confirm deletion from the user
+            read -p "Are you sure you want to delete the database '$DBName'? (y/n): " confirm
+            if [[ "$confirm" == "y" ]]; then
+                # Verify if the database is empty (no files or directories inside)
+                if [[ -n "$(ls -A "$DBName")" ]]; then
+                    echo "Error: Database '$DBName' is not empty. Please delete its contents first."
+                    continue
+                fi
+
+                # Check write and execute permissions before deleting
+                if ! check_permissions; then
+                    continue  # If permission check fails, stop the process
+                fi
+
+                # Delete the database directory
+                rm -rf "$DBName" && echo "Database '$DBName' deleted successfully." || echo "Error: Failed to delete database."
+            else
+                echo "Deletion canceled."
+            fi
+        else
+            echo "Error: Database '$DBName' does not exist."
+        fi
+    ;;
+
+    "Exit")
+        # Exit the program
+        echo "Thanks for using the system. See you next time!"
+        break  # Exit the loop and terminate the script
+    ;;
+
+    *)
+        # Handle invalid menu options
+        echo "Invalid option. Please try again."  
+    ;;
+    esac
 done
-
