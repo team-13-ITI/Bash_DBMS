@@ -1,99 +1,249 @@
-#! /bin/bash
+#!/bin/bash
 
+# Check if the 'validation.sh' script exists and is available for use
+# Display error message if the file is not found
+# Exit the script if the file is not found
+if [[ ! -f ./validation.sh ]]; then
+    echo "Error: 'validation.sh' not found!" 
+    exit 1  
+fi
 
+# Import common functions from the 'validation.sh' script
+source ./validation.sh
+
+# Welcome message
+echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+echo "      Table Management: Let's Begin!        "
+echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+
+# Main menu 
 while true; do
-    echo "============================="
-    echo "       Table Management      "
-    echo "============================="
-    
-    select choice in CreateTB ListTB DropTB InsertIntoTB SelectFromTB DeleteFromTB UpdateTB Exit; do
+    # Display the list of available menu options for the user
+    select menu_option in CreateTable ListTables DropTable InsertIntoTable SelectFromTable DeleteFromTable UpdateTable Exit; do
         case $REPLY in
-        "CreateTB")  
+        "CreateTable")  
+            # When selecting "Create Table", prompt the user to enter the table name
             read -p "Enter Table Name: " table_name
-            if [[ -z "$table_name" ]]; then
-                echo "Table name cannot be empty."
-                break
+
+            # Check if the table name is valid using the 'validate_name' function
+            if ! validate_name "$table_name"; then
+                continue  # If validation fails, loop back to the menu
             fi
-            if [[ ! "$table_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-                echo "Invalid table name. Only alphanumeric characters, underscores, and hyphens are allowed."
-                break
-            fi
-            if [[ -f $table_name ]]; then
-                echo "Table already exists."
+
+            # Verify if the table already exists in the current directory
+            # Display a message if the table exists
+            if [[ -f "$table_name" ]]; then
+                echo "Table '$table_name' already exists."  
             else
-                touch "$table_name" && echo "Table '$table_name' created successfully." || echo "Failed to create table."
+                # Create the table if it doesn't already exist
+                # Show success message if table creation succeeds
+                # Show failure message if table creation fails
+                touch "$table_name"
+                if [[ $? -eq 0 ]]; then
+                    echo "Table '$table_name' created successfully." 
+                else
+                    echo "Failed to create table."  
+                fi
             fi
             break
         ;;
-        "ListTB") 
+
+        "ListTables")  
+            # List all tables in the current directory
+            # Show message if no tables are found
             num_tables=$(ls | wc -l)
             if [[ $num_tables -eq 0 ]]; then
-                echo "No tables found in the database."
+                echo "No tables found in the database."  
             else
+                # List all tables (files) in the current directory
                 echo "Tables in the database:"
-                ls
+                ls  
             fi
             break
         ;;
-        "DropTB")
-            read -p "Enter Table Name to Drop: " table_name
-            if [[ -f $table_name ]]; then
-                rm "$table_name" && echo "Table '$table_name' deleted successfully." || echo "Failed to delete table."
+
+        "DropTable")  
+            # Prompt user to delete a table
+            read -p "Enter Table Name to Drop: " table_name  
+
+            # Ensure the table name is valid
+            if ! validate_name "$table_name"; then
+                continue  
+            fi
+
+            # If the table exists, remove it
+            if [[ -f "$table_name" ]]; then
+                # Delete the table file
+                rm "$table_name"  
+                if [[ $? -eq 0 ]]; then
+                    # Display success message
+                    echo "Table '$table_name' deleted successfully."  
+                else
+                    # Display failure message if deletion fails
+                    echo "Failed to delete table."  
+                fi
             else
-                echo "Table does not exist."
+                # Show message if the table is not found
+                echo "Table does not exist."  
             fi
             break
         ;;
-        "InsertIntoTB")
-            read -p "Enter Table Name: " table_name
-            if [[ -f $table_name ]]; then
-                read -p "Enter data to insert (comma-separated): " data
-                echo "$data" >> "$table_name" && echo "Data inserted successfully." || echo "Failed to insert data."
+
+        "InsertIntoTable")  
+            # Insert data into a table
+            read -p "Enter Table Name: " table_name  
+            
+            # Check if the table exists and if the user has write permissions
+            if ! validate_name "$table_name"; then
+                continue
+            fi
+            if ! validate_table_exists "$table_name"; then
+                continue
+            fi
+            if ! validate_writable "$table_name"; then
+                continue
+            fi
+
+            # Ensure the data entered by the user is valid
+            read -p "Enter data to insert (comma-separated): " record_data  
+            if ! validate_not_empty "$record_data"; then
+                continue
+            fi
+            if ! validate_alphanumeric_comma "$record_data"; then
+                continue
+            fi
+
+            # Insert data and handle errors
+            echo "$record_data" >> "$table_name"
+            if [[ $? -eq 0 ]]; then
+                # Show success message if data is inserted
+                echo "Data inserted successfully."  
             else
-                echo "Table does not exist."
+                # Show failure message if data insertion fails
+                echo "Failed to insert data."  
             fi
             break
         ;;
-        "SelectFromTB")
-            read -p "Enter Table Name: " table_name
-            if [[ -f $table_name ]]; then
+
+        "SelectFromTable")  
+            # View data from a table
+            read -p "Enter Table Name: " table_name  
+            # Check if the table name is valid
+            if ! validate_name "$table_name"; then
+                continue
+            fi  
+
+            # If the table exists, show its contents
+            if [[ -f "$table_name" ]]; then
                 echo "Contents of Table '$table_name':"
-                cat "$table_name"
+                # Use 'cat' to display the table contents
+                cat "$table_name"  
             else
-                echo "Table does not exist."
+                # Show message if the table is not found
+                echo "Table does not exist."  
             fi
             break
         ;;
-        "DeleteFromTB")
-            read -p "Enter Table Name: " table_name
-            if [[ -f $table_name ]]; then
-                read -p "Enter data to delete (exact match): " data
-                grep -v "^$data$" "$table_name" > temp_table && mv temp_table "$table_name"
-                echo "Matching data deleted successfully."
+
+        "DeleteFromTable")  
+            # Delete data from a table
+            read -p "Enter Table Name: " table_name 
+            # Check if the table name is valid
+            if ! validate_name "$table_name"; then
+                continue
+            fi  
+
+            # Validate table existence
+            if ! validate_table_exists "$table_name"; then
+                continue
+            fi  
+
+            # Ensure the user has permission to write to the table
+            if ! validate_writable "$table_name"; then
+                continue
+            fi  
+
+            # Ask for the data to delete
+            read -p "Enter data to delete (exact match): " record_data  
+            # Ensure data is not empty
+            if ! validate_not_empty "$record_data"; then
+                continue
+            fi  
+
+            # Ensure the data exists before deleting
+            if ! grep -q "^$record_data$" "$table_name"; then
+                echo "Error: No matching data found."  # Show error if no matching data is found
+                continue
+            fi
+            # Remove the matching data from the table
+            grep -v "^$record_data$" "$table_name" > temp_table
+            # Replace the old table with the updated one
+            mv temp_table "$table_name"  
+            if [[ $? -eq 0 ]]; then
+                # Show success message if data is deleted
+                echo "Data deleted successfully."  
             else
-                echo "Table does not exist."
+                # Show failure message if deletion fails
+                echo "Failed to delete data."  
             fi
             break
         ;;
-        "UpdateTB")
-            read -p "Enter Table Name: " table_name
-            if [[ -f $table_name ]]; then
-                read -p "Enter data to replace: " old_data
-                read -p "Enter new data: " new_data
-                sed -i "s/^$old_data$/$new_data/" "$table_name" && echo "Table updated successfully." || echo "Failed to update table."
+
+        "UpdateTable")  
+            # Update data in a table
+            read -p "Enter Table Name: " table_name  
+            # Check if the table name is valid
+            if ! validate_name "$table_name"; then
+                continue
+            fi  
+            # Ensure the table exists before attempting to update it
+            if ! validate_table_exists "$table_name"; then
+                continue
+            fi 
+
+            # Ensure the user has write permissions for the table
+            if ! validate_writable "$table_name"; then
+                continue
+            fi  
+
+            # Ask for the old data to replace
+            read -p "Enter data to replace: " old_record 
+            # Check if the old data is not empty
+            if ! validate_not_empty "$old_record"; then
+                continue
+            fi 
+
+            # Ask for the new data 
+            read -p "Enter new data: " new_record  
+            # Check if the new data is not empty
+            if ! validate_not_empty "$new_record"; then
+                continue
+            fi 
+
+            # Use the 'sed' command to replace the old data with the new data in the table
+            sed -i "s/^$old_record$/$new_record/" "$table_name"
+            if [[ $? -eq 0 ]]; then
+                # Show success message if the table is updated
+                echo "Table updated successfully."  
             else
-                echo "Table does not exist."
+                # Show failure message if the table update fails
+                echo "Failed to update table."  
             fi
             break
         ;;
-        "Exit")
-            echo "Exiting Table Management Menu."
+
+        "Exit")  
+            # Exit the menu
+            echo "  Exiting Table Management. Farewell!   " 
             exit 0
         ;;
+
         *)
-            echo "Invalid option. Please select a valid option."
+            # Handle invalid options
+            echo "Invalid option. Please try again."  
             break
         ;;
+
         esac
     done
 done

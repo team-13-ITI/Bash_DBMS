@@ -1,137 +1,22 @@
 #!/bin/bash
+
+# Check if the 'validation.sh' script exists and is available for use
+# Display error message if the file is not found
+# Exit the script if the file is not found 
+if [[ ! -f ./validation.sh ]]; then
+    echo "Error: 'validation.sh' not found!"
+    exit 1
+fi
+
+# Import common functions from the 'validation.sh' script
+source ./validation.sh
+
 # Welcome message
 echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-echo "  Ready to manage your databases in Bash? Let's go! "
+echo "  Ready to manage your databases? Let's go! "
 echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 
-# Function to validate the database name
-validate_db_name() {
-    local name="$1"
-
-    # Check if the name is empty
-    if [[ -z "$name" ]]; then
-        echo "Error: Database name can't be empty."
-        return 1
-    fi
-
-    # Verify if the name contains invalid characters (allow letters, numbers, underscores, and hyphens)
-    if [[ "$name" =~ [[:space:]] || "$name" =~ [^a-zA-Z0-9_-] ]]; then
-        echo "Error: Invalid database name. Use only letters, numbers, underscores (_), and hyphens (-)."
-        return 1
-    fi
-
-    # Verify if the name starts with a number or symbol
-    if [[ "$name" =~ ^[0-9] || "$name" =~ ^[^a-zA-Z] ]]; then
-        echo "Error: Database name cannot start with a number or special symbol."
-        return 1
-    fi
-
-    # Verify if the name is too long (max 255 characters)
-    if [[ ${#name} -gt 255 ]]; then
-        echo "Error: Database name is too long. Maximum length is 255 characters."
-        return 1
-    fi
-
-    # Verify for reserved names 
-    local reserved_names=("root" "admin" "system")
-    for reserved in "${reserved_names[@]}"; do
-        if [[ "$name" == "$reserved" ]]; then
-            echo "Error: '$name' is a reserved name and can't be used as database name."
-            return 1
-        fi
-    done
-
-    return 0
-}
-
-# Function to check if the current user has write and execute permissions
-check_permissions() {
-    # Check if write and execute permissions exist in the current directory
-    if [[ ! -w . || ! -x . ]]; then
-        echo "Error: You do not have write or execute permissions in this directory."
-        return 1
-    fi
-    return 0
-}
-
-# Function to check if the current disk has enough space
-check_disk_space() {
-    # Minimum required space (in bytes)
-    local required_space=10000000  
-    local available_space=$(df . | awk 'NR==2 {print $4}')
-    if [[ $available_space -lt $required_space ]]; then
-        echo "Error: Not enough disk space to create the database."
-        return 1
-    fi
-    return 0
-}
-
-# Function to check if a directory exists and is accessible
-check_directory_access() {
-    local dir="$1"
-
-    # Ensure the directory exists
-    if [[ ! -d "$dir" ]]; then
-        echo "Error: Directory '$dir' does not exist."
-        return 1
-    fi
-
-    # Check if execute Permission exists on the directory
-    if [[ ! -x "$dir" ]]; then
-        echo "Error: You do not have execute permission on directory '$dir'."
-        return 1
-    fi
-
-    # Ensure the directory is not a system directory 
-    if [[ "$dir" =~ ^/(bin|etc|home) ]]; then
-        echo "Error: Cannot perform operation on system directory."
-        return 1
-    fi
-
-    return 0
-}
-
-# Function to check if a file exists and is executable
-check_file_executable() {
-    local file="$1"
-    if [[ ! -f "$file" ]]; then
-        echo "Error: File '$file' does not exist."
-        return 1
-    fi
-    if [[ ! -x "$file" ]]; then
-        echo "Error: You do not have execute permission on '$file'."
-        return 1
-    fi
-    return 0
-}
-
-# Function to check if path contains invalid characters
-check_for_invalid_characters_in_path() {
-    local path="$1"
-    # Check if the path contains spaces or special characters
-    if [[ "$path" =~ [[:space:]] ]]; then
-        echo "Error: Path cannot contain spaces."
-        return 1
-    fi
-    if [[ "$path" =~ [^a-zA-Z0-9/_-] ]]; then
-        echo "Error: Path contains invalid characters. Only alphanumeric, underscores (_), and hyphens (-) are allowed."
-        return 1
-    fi
-    return 0
-}
-
-# Function to check if the user has sudo privileges
-check_sudo_privileges() {
-    if ! sudo -v &>/dev/null; then
-        echo "Error: You need sudo privileges to perform this action."
-        return 1
-    fi
-    return 0
-}
-
-
-
-# Main Menu 
+# Main Menu
 while true; do
     echo
     echo "Select an option:"
@@ -142,25 +27,31 @@ while true; do
         echo "Invalid option. Please select a valid choice."
     done
 
-    # Case structure to handle different menu options
+    # Handle different options in the main menu
     case $var in
     "CreateDB")
         # Option to create a new database
-        read -p "Please Enter Database name: " DBName
+        while true; do
+            read -p "Please Enter Database name: " DBName
 
-        # Validate the database name input
-        if ! validate_db_name "$DBName"; then
-            continue  # If validation fails, ask for the name again
-        fi
+            # Validate the database name
+            if validate_name "$DBName"; then
+                break
+            else
+                echo "Please try again."
+            fi
+        done
 
-        # Check if there's enough disk space
-        if ! check_disk_space; then
-            continue
-        fi
-
-        # Check write and execute permissions in the current directory
+        # Check write and execute permissions
         if ! check_permissions; then
+            echo "You do not have the necessary permissions to create a database here."
             continue  
+        fi
+
+        # Check if there is enough disk space
+        if ! check_disk_space; then
+            echo "Not enough disk space to create the database."
+            continue
         fi
 
         # Verify if the database already exists
@@ -168,9 +59,14 @@ while true; do
             echo "Error: Database '$DBName' already exists. Please choose a different name."
         else
             # Create the database directory
-            mkdir "$DBName" && echo "Database '$DBName' created successfully." || echo "Error: Failed to create database."
+            if mkdir "$DBName"; then
+                echo "Database '$DBName' created successfully."
+            else
+                echo "Error: Failed to create database."
+            fi
         fi
     ;;
+
     "ListDB")
         # Option to list all existing databases
         num_dirs=$(find . -maxdepth 1 -type d | wc -l)
@@ -185,59 +81,81 @@ while true; do
 
     "SelectDB")
         # Option to connect to a specific database
-        read -p "Please Enter Database name: " DBName
+        while true; do
+            read -p "Please Enter Database name: " DBName
 
-        # Validate the database name input
-        if ! validate_db_name "$DBName"; then
-            continue  
-        fi
+            # Validate the database name
+            if validate_name "$DBName"; then
+                break
+            else
+                echo "Please try again."
+            fi
+        done
 
         # Verify if the specified database exists and has execute permissions
         if ! check_directory_access "$DBName"; then
+            echo "You do not have access to the database '$DBName'."
             continue
         fi
 
         # Change directory to the selected database
-        cd "$DBName" || { echo "Error: Failed to access database directory."; continue; }
-        echo "Connected to database '$DBName'."
+        if cd "$DBName"; then
+            echo "Connected to database '$DBName'."
 
-        # Check if CRUD_TB exists and is executable
-        if ! check_file_executable "../CRUD_TB"; then
-            cd ..  # Return to the main directory
-            continue
+            # Check if CRUD_TB exists and is executable
+            if ! check_file_executable "./CRUD_TB"; then
+                echo "CRUD_TB script is not executable or does not exist."
+                cd ..  
+                continue
+            fi
+
+            # Execute the CRUD_TB script
+            bash ./CRUD_TB
+            cd .. || echo "Error: Failed to return to the main directory."
+        else
+            echo "Error: Failed to access database directory."
         fi
-
-        # Execute the CRUD_TB script
-        bash ../CRUD_TB
-        cd .. || echo "Error: Failed to return to the main directory."
     ;;
+
     "DropDB")
         # Option to delete an existing database
-        read -p "Please Enter Database name: " DBName
+        while true; do
+            read -p "Please Enter Database name: " DBName
 
-        # Validate the database name input
-        if ! validate_db_name "$DBName"; then
-            continue  # If validation fails, ask for the name again
-        fi
+            # Validate the database name
+            if validate_name "$DBName"; then
+                break
+            else
+                echo "Please try again."
+            fi
+        done
 
         # Verify if the specified database exists
         if [[ -d "$DBName" ]]; then
             # Confirm deletion from the user
             read -p "Are you sure you want to delete the database '$DBName'? (y/n): " confirm
             if [[ "$confirm" == "y" ]]; then
-                # Verify if the database is empty (no files or directories inside)
-                if [[ -n "$(ls -A "$DBName")" ]]; then
-                    echo "Error: Database '$DBName' is not empty. Please delete its contents first."
-                    continue
+                # Verify if the database is empty
+                if validate_database_empty "$DBName"; then
+                    # Check write and execute permissions before deleting
+                    if check_permissions; then
+                        # Check sudo privileges before deleting
+                        if check_sudo_privileges; then
+                            # Delete the database directory
+                            if rm -rf "$DBName"; then
+                                echo "Database '$DBName' deleted successfully."
+                            else
+                                echo "Error: Failed to delete database."
+                            fi
+                        else
+                            echo "You do not have sudo privileges to delete the database."
+                        fi
+                    else
+                        echo "You do not have the necessary permissions to delete the database."
+                    fi
+                else
+                    echo "Database '$DBName' is not empty. Please delete its contents first."
                 fi
-
-                # Check write and execute permissions before deleting
-                if ! check_permissions; then
-                    continue  # If permission check fails, stop the process
-                fi
-
-                # Delete the database directory
-                rm -rf "$DBName" && echo "Database '$DBName' deleted successfully." || echo "Error: Failed to delete database."
             else
                 echo "Deletion canceled."
             fi
@@ -249,7 +167,7 @@ while true; do
     "Exit")
         # Exit the program
         echo "Thanks for using the system. See you next time!"
-        break  # Exit the loop and terminate the script
+        break  
     ;;
 
     *)
