@@ -3,13 +3,13 @@
 # Check if the 'validation.sh' script exists and is available for use
 # Display error message if the file is not found
 # Exit the script if the file is not found 
-if [[ ! -f ./validation.sh ]]; then
+if [[ ! -f ./Validation.sh ]]; then
     echo "Error: 'validation.sh' not found!"
     exit 1
 fi
 
 # Import common functions from the 'validation.sh' script
-source ./validation.sh
+source ./Validation.sh
 
 # Welcome message
 echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
@@ -20,13 +20,16 @@ echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 while true; do
     echo
     echo "Select an option:"
-    select var in CreateDB ListDB SelectDB DropDB Exit; do
+    options=("CreateDB" "ListDB" "SelectDB" "DropDB" "Exit")
+    select var in "${options[@]}"; do
         if [[ -n "$var" ]]; then
-            break  
+            break  # A valid option was selected
+        elif [[ -z "$REPLY" ]]; then
+            echo "No input detected. Please select a valid option."
+        else
+            echo "Invalid choice: '$REPLY'. Please select a valid option."
         fi
-        echo "Invalid option. Please select a valid choice."
     done
-
     # Handle different options in the main menu
     case $var in
     "CreateDB")
@@ -69,18 +72,17 @@ while true; do
 
     "ListDB")
         # Option to list all existing databases
-        num_dirs=$(find . -maxdepth 1 -type d | wc -l)
-        if [[ $num_dirs -le 1 ]]; then
+        num_dirs=$(find . -maxdepth 1 -type d -not -name ".*" | wc -l)
+        if [[ $num_dirs -eq 0 ]]; then
             echo "No databases found."
         else
-            echo "Number of Databases: $((num_dirs - 1))"
+            echo "Number of Databases: $num_dirs"
             echo "List of Databases:"
-            find . -maxdepth 1 -type d -not -name "." | sed 's|^\./||'
+            find . -maxdepth 1 -type d -not -name ".*" -exec basename {} \;
         fi
     ;;
 
     "SelectDB")
-        # Option to connect to a specific database
         while true; do
             read -p "Please Enter Database name: " DBName
 
@@ -88,7 +90,7 @@ while true; do
             if validate_name "$DBName"; then
                 break
             else
-                echo "Please try again."
+                echo "Invalid database name. Please try again."
             fi
         done
 
@@ -102,20 +104,36 @@ while true; do
         if cd "$DBName"; then
             echo "Connected to database '$DBName'."
 
-            # Check if CRUD_TB exists and is executable
-            if ! check_file_executable "./CRUD_TB"; then
-                echo "CRUD_TB script is not executable or does not exist."
-                cd ..  
+            # Check if CRUD_TB exists in the parent directory
+            parent_dir=$(dirname "$PWD")
+            crud_tb_path="$parent_dir/CRUD_TB"
+
+            echo "Checking file: $crud_tb_path"
+
+            # Verify the existence and executability of CRUD_TB
+            if [[ ! -f "$crud_tb_path" ]]; then
+                echo "Error: File 'CRUD_TB' does not exist in $parent_dir."
+                cd ..
                 continue
+            elif [[ ! -x "$crud_tb_path" ]]; then
+                echo "Error: 'CRUD_TB' script exists but is not executable."
+                chmod +x "$crud_tb_path"  # Attempt to fix permissions automatically
+                if [[ ! -x "$crud_tb_path" ]]; then
+                    echo "Error: Failed to make 'CRUD_TB' executable. Check permissions."
+                    cd ..
+                    continue
+                fi
             fi
 
-            # Execute the CRUD_TB script
-            bash ./CRUD_TB
-            cd .. || echo "Error: Failed to return to the main directory."
+            # Execute CRUD_TB script and exit the current menu
+            exec bash "$crud_tb_path"
+
+            # If the above exec fails for any reason, return to the parent directory
+            cd ..
         else
             echo "Error: Failed to access database directory."
         fi
-    ;;
+        ;;
 
     "DropDB")
         # Option to delete an existing database

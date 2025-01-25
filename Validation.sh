@@ -151,7 +151,7 @@ validate_database_empty() {
 # Function to validate if a string contains only alphanumeric characters and commas
 validate_alphanumeric_comma() {
     local data="$1"
-    if ! [[ "$data" =~ ^[a-zA-Z0-9, ]+$ ]]; then
+    if ! [[ "$data" =~ ^[a-zA-Z0-9,\ ]+$ ]]; then
         echo "Error: Data should be alphanumeric and comma-separated."
         return 1
     fi
