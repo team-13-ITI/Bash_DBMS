@@ -12,9 +12,9 @@ fi
 source ./Validation.sh
 
 # Welcome message
-echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+echo "~~~~~~~~~~~~~~~~"
 echo "  Ready to manage your databases? Let's go! "
-echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+echo "~~~~~~~~~~~~~~~~"
 
 # Main Menu
 while true; do
@@ -140,53 +140,59 @@ while true; do
         while true; do
             read -p "Please Enter Database name: " DBName
 
-            # Validate the database name
-            if validate_name "$DBName"; then
-                break
+            # Verify if the specified database exists
+            if [[ -d "$DBName" ]]; then
+                # Validate the database name
+                if validate_name "$DBName"; then
+                    break  # Exit loop if the database exists and the name is valid
+                else
+                    echo "Invalid database name. Please enter a valid name."
+                fi
             else
-                echo "Please try again."
+                echo "Error: Database '$DBName' does not exist. Please enter a valid database name."
             fi
         done
 
-        # Verify if the specified database exists
-        if [[ -d "$DBName" ]]; then
-            # Confirm deletion from the user
-            read -p "Are you sure you want to delete the database '$DBName'? (y/n): " confirm
-            if [[ "$confirm" == "y" ]]; then
-                # Verify if the database is empty
-                if validate_database_empty "$DBName"; then
-                    # Check write and execute permissions before deleting
-                    if check_permissions; then
-                        # Check sudo privileges before deleting
-                        if check_sudo_privileges; then
-                            # Delete the database directory
-                            if rm -rf "$DBName"; then
-                                echo "Database '$DBName' deleted successfully."
-                            else
-                                echo "Error: Failed to delete database."
-                            fi
+        # Confirm deletion from the user
+        read -p "Are you sure you want to delete the database '$DBName'? (y/n): " confirm
+        if [[ "$confirm" == "y" ]]; then
+            # Verify if the database is empty
+            if validate_database_empty "$DBName"; then
+                # Check write and execute permissions before deleting
+                if check_permissions; then
+                    # Check sudo privileges before deleting
+                    if check_sudo_privileges; then
+                        # Delete the database directory
+                        if rm -rf "$DBName"; then
+                            echo "Database '$DBName' deleted successfully."
                         else
-                            echo "You do not have sudo privileges to delete the database."
+                            echo "Error: Failed to delete database."
                         fi
                     else
-                        echo "You do not have the necessary permissions to delete the database."
+                        echo "You do not have sudo privileges to delete the database."
                     fi
                 else
-                    echo "Database '$DBName' is not empty. Please delete its contents first."
+                    echo "You do not have the necessary permissions to delete the database."
                 fi
             else
-                echo "Deletion canceled."
+                echo "Database '$DBName' is not empty. Please delete its contents first."
             fi
         else
-            echo "Error: Database '$DBName' does not exist."
+            echo "Deletion canceled."
         fi
-    ;;
+        ;;
 
     "Exit")
-        # Exit the program
-        echo "Thanks for using the system. See you next time!"
-        break  
-    ;;
+        # Ask for confirmation before exiting
+        read -p "Are you sure you want to exit? (y/n): " confirm_exit
+        if [[ "$confirm_exit" == "y" ]]; then
+            echo "Thanks for using the system. See you next time!"
+            break  # Exit the loop and program
+        else
+            echo "You chose not to exit. Returning to the menu."
+        fi
+        ;;
+
 
     *)
         # Handle invalid menu options

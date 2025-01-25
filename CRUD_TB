@@ -17,207 +17,226 @@ source "$SCRIPT_DIR/Validation.sh"
 
 
 # Welcome message
-echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+echo "~~~~~~~~~~~~~~~~"
 echo "      Table Management: Let's Begin!        "
-echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+echo "~~~~~~~~~~~~~~~~"
 
 # Main menu 
 while true; do
     # Display the list of available menu options for the user
     select var in CreateTable ListTables DropTable InsertIntoTable SelectFromTable DeleteFromTable UpdateTable Exit; do
         case $var in
-        "CreateTable")  
-            # When selecting "Create Table", prompt the user to enter the table name
-            read -p "Enter Table Name: " table_name
+            "CreateTable")  
+                # Create a loop to keep asking for a valid table name
+                while true; do
+                    # When selecting "Create Table", prompt the user to enter the table name
+                    read -p "Enter Table Name: " table_name
 
-            # Check if the table name is valid using the 'validate_name' function
-            if ! validate_name "$table_name"; then
-                continue  # If validation fails, loop back to the menu
-            fi
-
-            # Verify if the table already exists in the current directory
-            if [[ -f "$table_name" ]]; then
-                echo "Table '$table_name' already exists."  
-                break
-            fi
-
-            # Prompt the user to enter the number of columns
-            read -p "Please enter the number of columns: " colNum
-            if ! [[ $colNum =~ ^[0-9]+$ ]] || [[ $colNum -le 0 ]]; then
-                echo "Invalid number of columns. Please enter a positive integer."
-                continue
-            fi
-
-            # Create a metadata file for the table
-            metadata_file=".$table_name-metadata"
-            touch "$metadata_file"
-            flag=0  # Flag to track if a primary key is set
-
-            for ((i = 1; i <= colNum; i++)); do
-                # Prompt the user to enter the column name
-                read -p "Please enter the name for column $i: " colData
-                if ! validate_name "$colData"; then
-                    echo "Invalid column name. Please try again."
-                    ((i--))  # Retry the current column
-                    continue
-                fi
-
-                # Prompt the user to enter the data type for the column
-                read -p "Please enter the data type for column $colData (int, string, float): " datatypeCol
-                if [[ "$datatypeCol" != "int" && "$datatypeCol" != "string" && "$datatypeCol" != "float" ]]; then
-                    echo "Invalid data type. Please enter 'int', 'string', or 'float'."
-                    ((i--))  # Retry the current column
-                    continue
-                fi
-
-                # Construct the metadata line for this column
-                line="$colData:$datatypeCol"
-
-                # Ask if this column should be the primary key
-                if [[ $flag -eq 0 ]]; then
-                    read -p "Do you want to make $colData the primary key? (yes/no): " pkCheck
-                    if [[ "$pkCheck" =~ ^([yY][eE][sS]|[Yy])$ ]]; then
-                        line+=":pk"
-                        flag=1  # Mark that a primary key has been set
+                    # Check if the table name is valid using the 'validate_name' function
+                    if ! validate_name "$table_name"; then
+                        continue  # If validation fails, loop back to the menu
                     fi
-                fi
 
-                # Append the metadata line to the metadata file
-                echo "$line" >> "$metadata_file"
-            done
+                    # Verify if the table already exists in the current directory
+                    if [[ -f "$table_name" ]]; then
+                        echo "Table '$table_name' already exists."
+                        continue  # Continue the loop and prompt the user again for a new table name
+                    fi
 
-            # Create an empty table file to store data
-            touch "$table_name"
-            if [[ $? -eq 0 ]]; then
-                echo "Table '$table_name' created successfully with metadata."
-            else
-                echo "Failed to create table."
-            fi
-            break
-        ;;
-
-
-        "ListTables")  
-            # List all tables in the current directory
-            # Show message if no tables are found
-            num_tables=$(ls | wc -l)
-            if [[ $num_tables -eq 0 ]]; then
-                echo "No tables found in the database."  
-            else
-                # List all tables (files) in the current directory
-                echo "Tables in the database:"
-                ls  
-            fi
-            break
-        ;;
-
-        "DropTable")  
-            # Prompt user to delete a table
-            read -p "Enter Table Name to Drop: " table_name  
-
-            # Ensure the table name is valid
-            if ! validate_name "$table_name"; then
-                continue  
-            fi
-
-            # If the table exists, remove it
-            if [[ -f "$table_name" ]]; then
-                # Delete the table file
-                rm "$table_name"  
-                if [[ $? -eq 0 ]]; then
-                    # Display success message
-                    echo "Table '$table_name' deleted successfully."  
-                else
-                    # Display failure message if deletion fails
-                    echo "Failed to delete table."  
-                fi
-            else
-                # Show message if the table is not found
-                echo "Table does not exist."  
-            fi
-            break
-        ;;
-
-        "InsertIntoTable")  
-            read -p "Please enter Table Name: " TBName
-            
-            # Check if the table exists
-            if [[ -e $TBName ]]; then
-                metadata_file=".$TBName-metadata"
-                
-                # Check if metadata file exists
-                if [[ ! -f $metadata_file ]]; then
-                    echo "Metadata file for the table is missing. Cannot proceed."
+                    # If table doesn't exist, break out of the loop to proceed with creation
                     break
-                fi
-                
-                columnSize=$(wc -l < "$metadata_file")  # Get the number of columns
-                row=""  # Initialize the row to insert
-
-                for ((i = 0; i < columnSize; i++)); do
-                    # Read the metadata line for the current column
-                    metadata_line=$(sed -n "$((i + 1))p" "$metadata_file")
-                    colName=$(echo "$metadata_line" | cut -d: -f1)
-                    colType=$(echo "$metadata_line" | cut -d: -f2)
-                    colPkCheck=$(echo "$metadata_line" | cut -d: -f3)
-
-                    # Prompt the user to enter a value for the column
-                    while true; do
-                        read -p "Please enter value for column $colName ($colType): " value
-
-                        # Validate the input based on the column type
-                        case $colType in
-                            int)
-                                if ! [[ $value =~ ^[0-9]+$ ]]; then
-                                    echo "Error: $colName must be an integer."
-                                    continue
-                                fi
-                                ;;
-                            string)
-                                if ! [[ $value =~ ^[a-zA-Z]+$ ]]; then
-                                    echo "Error: $colName must be a string."
-                                    continue
-                                fi
-                                ;;
-                            float)
-                                if ! [[ $value =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-                                    echo "Error: $colName must be a float."
-                                    continue
-                                fi
-                                ;;
-                            *)
-                                echo "Error: Unknown data type $colType for column $colName."
-                                continue
-                                ;;
-                        esac
-
-                        # Check for primary key constraints
-                        if [[ $colPkCheck == "pk" ]]; then
-                            if grep -q "^$value," "$TBName"; then
-                                echo "Error: Duplicate value for primary key column $colName."
-                                continue
-                            fi
-                        fi
-
-                        break  # Exit the input validation loop
-                    done
-
-                    # Append the value to the row
-                    if [[ $i -eq 0 ]]; then
-                        row+="$value"
-                    else
-                        row+=",$value"
-                    fi
                 done
 
-                # Insert the row into the table
-                echo "$row" >> "$TBName"
-                echo "Data is inserted successfully."
+                # Prompt the user to enter the number of columns
+                read -p "Please enter the number of columns: " colNum
+                if ! [[ $colNum =~ ^[0-9]+$ ]] || [[ $colNum -le 0 ]]; then
+                    echo "Invalid number of columns. Please enter a positive integer."
+                    continue
+                fi
 
-            else
-                echo "Table does not exist."
-            fi
+                # Create a metadata file for the table
+                metadata_file=".$table_name-metadata"
+                touch "$metadata_file"
+                flag=0  # Flag to track if a primary key is set
+
+                for ((i = 1; i <= colNum; i++)); do
+                    # Prompt the user to enter the column name
+                    read -p "Please enter the name for column $i: " colData
+                    if ! validate_name "$colData"; then
+                        echo "Invalid column name. Please try again."
+                        ((i--))  # Retry the current column
+                        continue
+                    fi
+
+                    # Prompt the user to enter the data type for the column
+                    read -p "Please enter the data type for column $colData (int, string, float): " datatypeCol
+                    if [[ "$datatypeCol" != "int" && "$datatypeCol" != "string" && "$datatypeCol" != "float" ]]; then
+                        echo "Invalid data type. Please enter 'int', 'string', or 'float'."
+                        ((i--))  # Retry the current column
+                        continue
+                    fi
+
+                    # Construct the metadata line for this column
+                    line="$colData:$datatypeCol"
+
+                    # Ask if this column should be the primary key
+                    if [[ $flag -eq 0 ]]; then
+                        read -p "Do you want to make $colData the primary key? (yes/no): " pkCheck
+                        if [[ "$pkCheck" =~ ^([yY][eE][sS]|[Yy])$ ]]; then
+                            line+=":pk"
+                            flag=1  # Mark that a primary key has been set
+                        fi
+                    fi
+
+                    # Append the metadata line to the metadata file
+                    echo "$line" >> "$metadata_file"
+                done
+
+                # Create an empty table file to store data
+                touch "$table_name"
+                if [[ $? -eq 0 ]]; then
+                    echo "Table '$table_name' created successfully with metadata."
+                else
+                    echo "Failed to create table."
+                fi
+                break
             ;;
+            "ListTables")  
+                # List all tables in the current directory
+                # Show message if no tables are found
+                num_tables=$(ls | wc -l)
+                if [[ $num_tables -eq 0 ]]; then
+                    echo "No tables found in the database."  
+                else
+                    # List all tables (files) in the current directory
+                    echo "Tables in the database:"
+                    ls  
+                fi
+                break
+                ;;
+        
+            "DropTable")  
+                # Loop to keep asking for the table name if it is invalid
+                while true; do
+                    # Prompt user to delete a table
+                    read -p "Enter Table Name to Drop: " table_name  
+
+                    # Ensure the table name is valid
+                    if ! validate_name "$table_name"; then
+                        continue  # If invalid name, continue to ask for a valid name
+                    fi
+
+                    # If the table exists, remove it
+                    if [[ -f "$table_name" ]]; then
+                        # Delete the table file
+                        rm "$table_name"  
+                        if [[ $? -eq 0 ]]; then
+                            # Display success message
+                            echo "Table '$table_name' deleted successfully."  
+                        else
+                            # Display failure message if deletion fails
+                            echo "Failed to delete table."  
+                        fi
+                        break  # Exit the loop if the table is successfully deleted
+                    else
+                        # Show message if the table is not found
+                        echo "Table '$table_name' does not exist."
+                        continue  # Continue to ask for a valid table name
+                    fi
+                done
+                break  # Exit from the menu after completing the operation
+            ;;
+
+"InsertIntoTable")  
+    while true; do
+        read -p "Please enter Table Name: " TBName
+
+        # Check if the table exists
+        if [[ -e $TBName ]]; then
+            metadata_file=".$TBName-metadata"
+            
+            # Check if metadata file exists
+            if [[ ! -f $metadata_file ]]; then
+                echo "Metadata file for the table is missing. Cannot proceed."
+                break
+            fi
+            
+            columnSize=$(wc -l < "$metadata_file")  # Get the number of columns
+            row=""  # Initialize the row to insert
+
+            # Loop through each column for input
+            for ((i = 0; i < columnSize; i++)); do
+                # Read the metadata line for the current column
+                metadata_line=$(sed -n "$((i + 1))p" "$metadata_file")
+                colName=$(echo "$metadata_line" | cut -d: -f1)
+                colType=$(echo "$metadata_line" | cut -d: -f2)
+                colPkCheck=$(echo "$metadata_line" | cut -d: -f3)
+
+                # Flag to check if input is valid
+                valid_input=false
+
+                # Keep asking for the correct input until it's valid
+                while ! $valid_input; do
+                    read -p "Please enter value for column $colName ($colType): " value
+
+                    # Validate the input based on the column type
+                    case $colType in
+                        int)
+                            if ! [[ $value =~ ^[0-9]+$ ]]; then
+                                echo "Error: $colName must be an integer."
+                                continue
+                            fi
+                            ;;
+                        string)
+                            if ! [[ $value =~ ^[a-zA-Z]+$ ]]; then
+                                echo "Error: $colName must be a string."
+                                continue
+                            fi
+                            ;;
+                        float)
+                            if ! [[ $value =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+                                echo "Error: $colName must be a float."
+                                continue
+                            fi
+                            ;;
+                        *)
+                            echo "Error: Unknown data type $colType for column $colName."
+                            continue
+                            ;;
+                    esac
+
+                    # Check for primary key constraints
+                    if [[ $colPkCheck == "pk" ]]; then
+                        if grep -q "^$value," "$TBName"; then
+                            echo "Error: Duplicate value for primary key column $colName."
+                            continue
+                        fi
+                    fi
+
+                    # If all validations passed, set valid_input to true
+                    valid_input=true
+                done
+
+                # Append the value to the row
+                if [[ $i -eq 0 ]]; then
+                    row+="$value"
+                else
+                    row+=",$value"
+                fi
+            done
+
+            # Insert the row into the table
+            echo "$row" >> "$TBName"
+            echo "Data is inserted successfully."
+            break  # Exit the loop once the data is inserted successfully
+        else
+            echo "Table does not exist. Please enter a valid table name."
+        fi
+    done
+    ;;
+
+
+
 
         "SelectFromTable")  
             read -p "Enter Table Name: " table_name  
@@ -285,80 +304,146 @@ while true; do
             eval "$cmd"
             ;;
 
-        "DeleteFromTable")  
-            # Delete data from a table
+       "DeleteFromTable")  
+        # Start the loop for Delete operation
+        while true; do
+            # Ask for the table name to delete data from
             read -p "Enter Table Name: " table_name 
-            # Check if the table name is valid
+
+            # Validate the table name to ensure it's valid
             if ! validate_name "$table_name"; then
-                continue
+                echo "Invalid table name. Try again."
+                continue  # If the table name is invalid, continue asking for it
             fi  
 
-            # Validate table existence
+            # Check if the specified table exists
             if ! validate_table_exists "$table_name"; then
-                continue
+                echo "Table does not exist. Try again."
+                continue  # If the table doesn't exist, continue asking for a valid table
             fi  
-
-            # Ensure the user has permission to write to the table
-            if ! validate_writable "$table_name"; then
-                continue
-            fi  
-
-            # Ask for the data to delete
-            read -p "Enter data to delete (exact match): " record_data  
-            # Ensure data is not empty
-            if ! validate_not_empty "$record_data"; then
-                continue
-            fi  
-
-            # Ensure the data exists before deleting
-            if ! grep -q "^$record_data$" "$table_name"; then
-                echo "Error: No matching data found."  # Show error if no matching data is found
-                continue
-            fi
-            # Remove the matching data from the table
-            grep -v "^$record_data$" "$table_name" > temp_table
-            # Replace the old table with the updated one
-            mv temp_table "$table_name"  
-            if [[ $? -eq 0 ]]; then
-                # Show success message if data is deleted
-                echo "Data deleted successfully."  
-            else
-                # Show failure message if deletion fails
-                echo "Failed to delete data."  
-            fi
-            break
-        ;;
-
-        "UpdateTable")  
-            # Update data in a table
-            read -p "Enter Table Name: " table_name  
-            # Check if the table name is valid
-            if ! validate_name "$table_name"; then
-                continue
-            fi  
-            # Ensure the table exists before attempting to update it
-            if ! validate_table_exists "$table_name"; then
-                continue
-            fi 
 
             # Ensure the user has write permissions for the table
             if ! validate_writable "$table_name"; then
-                continue
+                echo "You don't have permission to modify this table. Try again."
+                continue  # If no write permissions, continue asking for a valid table
             fi  
 
-            # Ask for the old data to replace
-            read -p "Enter data to replace: " old_record 
-            # Check if the old data is not empty
-            if ! validate_not_empty "$old_record"; then
+            # Ask the user to enter the data to delete (exact match)
+            while true; do
+                read -p "Enter data to delete (exact match), or type 'cancel' to go back: " record_data  
+
+                # If the user wants to cancel, break and go back
+                if [[ "$record_data" == "cancel" ]]; then
+                    echo "Cancelling operation. Returning to the main menu."
+                    break 2  # Break both loops and return to the main menu
+                fi
+
+                # Ensure the data is not empty
+                if ! validate_not_empty "$record_data"; then
+                    echo "Data cannot be empty. Try again."
+                    continue  # If the data is empty, continue asking for valid data
+                fi  
+
+                # Check if the data exists in the table before attempting to delete it
+                if ! grep -q "^$record_data$" "$table_name"; then
+                    echo "Error: No matching data found. Please enter valid data."
+                    continue  # If no matching data is found, continue asking for correct data
+                fi
+
+                # If data is found, remove the matching data from the table
+                grep -v "^$record_data$" "$table_name" > temp_table
+                # Replace the old table with the updated one after deleting the data
+                mv temp_table "$table_name"  
+                
+                # Check if the deletion was successful
+                if [[ $? -eq 0 ]]; then
+                    echo "Data deleted successfully."  # Show success message if deletion is successful
+                    break 2  # Exit both the data entry loop and the table loop, return to the main menu
+                else
+                    echo "Failed to delete data. Please try again."  # Show failure message if deletion fails
+                fi
+            done
+        done
+        ;;
+
+        "UpdateTable")  
+        # Update data in a table
+        read -p "Enter Table Name: " table_name  
+
+        # Check if the table name is valid
+        if ! validate_name "$table_name"; then
+            continue
+        fi  
+
+        # Ensure the table exists before attempting to update it
+        if ! validate_table_exists "$table_name"; then
+            continue
+        fi 
+
+        # Ensure the user has write permissions for the table
+        if ! validate_writable "$table_name"; then
+            continue
+        fi  
+
+        # Ask if you want to update a column
+        echo "Do you want to update a specific column? (yes/no)"
+        read -p "Enter your choice: " update_column_choice
+
+        if [[ "$update_column_choice" =~ ^([yY][eE][sS]|[Yy])$ ]]; then
+            # List available columns (assuming the table metadata is stored in a file)
+            metadata_file=".$table_name-metadata"
+            
+            if [[ ! -f "$metadata_file" ]]; then
+                echo "Metadata file for the table is missing."
                 continue
-            fi 
+            fi
+
+            # Display available columns
+            echo "Available columns:"
+            awk -F: '{print NR ") " $1}' "$metadata_file"
+
+            # Ask the user to choose a column to update
+            read -p "Enter the number of the column you want to update: " column_number
+
+            # Get the column name from the metadata file
+            column_name=$(awk -F: -v col_num="$column_number" 'NR == col_num {print $1}' "$metadata_file")
+            if [[ -z "$column_name" ]]; then
+                echo "Invalid column number."
+                continue
+            fi
+
+            # Ask for the old data to replace
+            while true; do
+                read -p "Enter the data to replace in column $column_name: " old_record
+                if ! validate_not_empty "$old_record"; then
+                    echo "Data cannot be empty. Please try again."
+                    continue
+                fi 
+
+                # Ensure the old data exists in the table
+                if ! grep -q "^$old_record$" "$table_name"; then
+                    echo "Error: The data '$old_record' does not exist in the table."
+                    continue  # If the old data does not exist, continue asking for it
+                fi
+                break
+            done
 
             # Ask for the new data 
-            read -p "Enter new data: " new_record  
-            # Check if the new data is not empty
-            if ! validate_not_empty "$new_record"; then
-                continue
-            fi 
+            while true; do
+                read -p "Enter new data for column $column_name: " new_record
+                if ! validate_not_empty "$new_record"; then
+                    echo "Data cannot be empty. Please try again."
+                    continue
+                fi 
+                
+                # Check if the new record is the same as the old one
+                if [[ "$new_record" == "$old_record" ]]; then
+                    echo "New data cannot be the same as the old data. Please enter a different value."
+                    continue
+                fi
+
+                break
+            done
 
             # Use the 'sed' command to replace the old data with the new data in the table
             sed -i "s/^$old_record$/$new_record/" "$table_name"
@@ -369,8 +454,15 @@ while true; do
                 # Show failure message if the table update fails
                 echo "Failed to update table."  
             fi
-            break
-        ;;
+        else
+            # If user does not want to update a column
+            echo "No column selected for update. Returning to menu."
+        fi
+        break
+    ;;
+
+
+
 
         "Exit")  
             # Exit the menu
