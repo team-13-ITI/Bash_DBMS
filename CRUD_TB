@@ -102,6 +102,20 @@ while true; do
                 break
                 ;;
 
+                "ListTables")  
+                    # List all tables in the current directory
+                    # Show message if no tables are found
+                    num_tables=$(ls | wc -l)
+                    if [[ $num_tables -eq 0 ]]; then
+                        echo "No tables found in the database."  
+                    else
+                        # List all tables (files) in the current directory
+                        echo "Tables in the database:"
+                        ls  
+                    fi
+                    break
+                ;;
+
             "DropTable")  
                 while true; do
                     read -p "Enter Table Name to Drop: " table_name  
@@ -158,7 +172,7 @@ while true; do
                             while ! $valid_input; do
                                 read -p "Please enter value for column $colName ($colType): " value
                                 if ! check_exit "$value"; then
-                                    break 5  # Exit all loops to main menu
+                                    break 4  # Exit all loops to main menu
                                 fi
 
                                 case $colType in
@@ -210,6 +224,7 @@ while true; do
                         echo "Table does not exist. Please enter a valid table name."
                     fi
                 done
+                break
                 ;;
 
             "SelectFromTable")  
@@ -247,7 +262,47 @@ while true; do
                     break  # Exit to main menu
                 fi
 
-                # ... [rest of the code] ...
+                 # Prepare awk filters
+                awk_filter=""
+                if [[ -n "$columns" && "$columns" != "*" ]]; then
+                    cols_array=($(echo "$columns" | tr "," " "))
+                    for col in "${cols_array[@]}"; do
+                        col_index=$(awk -F: -v col="$col" '{if ($1 == col) print NR}' "$metadata_file")
+                        if [[ -z "$col_index" ]]; then
+                            echo "Column $col does not exist."
+                            break 2
+                        fi
+                        awk_filter+="\"$col_index\" "
+                    done
+                    awk_filter="{print "$(echo "$awk_filter" | sed 's/ $//')"}"
+                fi
+
+                condition_filter=""
+                if [[ -n "$condition" ]]; then
+                    cond_col=$(echo "$condition" | cut -d= -f1)
+                    cond_value=$(echo "$condition" | cut -d= -f2)
+                    cond_index=$(awk -F: -v col="$cond_col" '{if ($1 == col) print NR}' "$metadata_file")
+                    if [[ -z "$cond_index" ]]; then
+                        echo "Column $cond_col does not exist."
+                        break
+                    fi
+                    condition_filter="\$${cond_index} == \"$cond_value\""
+                fi
+
+                order_filter=""
+                if [[ -n "$order_by" ]]; then
+                    order_index=$(awk -F: -v col="$order_by" '{if ($1 == col) print NR}' "$metadata_file")
+                    if [[ -z "$order_index" ]]; then
+                        echo "Column $order_by does not exist."
+                        break
+                    fi
+                    order_filter=" | sort -t, -k$order_index"
+                fi
+
+                # Combine filters
+                cmd="awk -F, '$condition_filter {print}' $table_name$order_filter"
+                eval "$cmd"
+                break
                 ;;
 
             "DeleteFromTable")  
@@ -297,6 +352,7 @@ while true; do
                         fi
                     done
                 done
+                break
                 ;;
 
             "UpdateTable")  
@@ -317,36 +373,11 @@ while true; do
                     continue
                 fi  
 
-                echo "Do you want to update a specific column? (yes/no)"
-                read -p "Enter your choice: " update_column_choice
-                if ! check_exit "$update_column_choice"; then
-                    break  # Exit to main menu
-                fi
 
-                if [[ "$update_column_choice" =~ ^([yY][eE][sS]|[Yy])$ ]]; then
-                    metadata_file=".$table_name-metadata"
-                    
-                    if [[ ! -f "$metadata_file" ]]; then
-                        echo "Metadata file for the table is missing."
-                        continue
-                    fi
 
-                    echo "Available columns:"
-                    awk -F: '{print NR ") " $1}' "$metadata_file"
-
-                    read -p "Enter the number of the column you want to update: " column_number
-                    if ! check_exit "$column_number"; then
-                        break  # Exit to main menu
-                    fi
-
-                    column_name=$(awk -F: -v col_num="$column_number" 'NR == col_num {print $1}' "$metadata_file")
-                    if [[ -z "$column_name" ]]; then
-                        echo "Invalid column number."
-                        continue
-                    fi
 
                     while true; do
-                        read -p "Enter the data to replace in column $column_name: " old_record
+                        read -p "Enter the data to replace: " old_record
                         if ! check_exit "$old_record"; then
                             break 3  # Exit to main menu
                         fi
@@ -362,7 +393,7 @@ while true; do
                     done
 
                     while true; do
-                        read -p "Enter new data for column $column_name: " new_record
+                        read -p "Enter new data to replace: " new_record
                         if ! check_exit "$new_record"; then
                             break 3  # Exit to main menu
                         fi
@@ -384,9 +415,6 @@ while true; do
                     else
                         echo "Failed to update table."  
                     fi
-                else
-                    echo "No column selected for update. Returning to menu."
-                fi
                 break
                 ;;
 

@@ -1,0 +1,3 @@
+empId:int:pk
+name:string
+age:int
