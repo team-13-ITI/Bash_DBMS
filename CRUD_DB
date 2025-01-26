@@ -83,57 +83,58 @@ while true; do
     ;;
 
     "SelectDB")
-        while true; do
-            read -p "Please Enter Database name: " DBName
+    while true; do
+        read -p "Please Enter Database name: " DBName
 
-            # Validate the database name
-            if validate_name "$DBName"; then
-                break
-            else
-                echo "Invalid database name. Please try again."
-            fi
-        done
-
-        # Verify if the specified database exists and has execute permissions
-        if ! check_directory_access "$DBName"; then
-            echo "You do not have access to the database '$DBName'."
-            continue
+        # Validate the database name
+        if validate_name "$DBName"; then
+            break
+        else
+            echo "Invalid database name. Please try again."
         fi
+    done
 
-        # Change directory to the selected database
-        if cd "$DBName"; then
-            echo "Connected to database '$DBName'."
+    # Verify if the specified database exists and has execute permissions
+    if ! check_directory_access "$DBName"; then
+        echo "You do not have access to the database '$DBName'."
+        continue
+    fi
 
-            # Check if CRUD_TB exists in the parent directory
-            parent_dir=$(dirname "$PWD")
-            crud_tb_path="$parent_dir/CRUD_TB"
+    # Change directory to the selected database
+    if cd "$DBName"; then
+        echo "Connected to database '$DBName'."
 
-            echo "Checking file: $crud_tb_path"
+        # Check if CRUD_TB exists in the parent directory
+        parent_dir=$(dirname "$PWD")
+        crud_tb_path="$parent_dir/CRUD_TB"
 
-            # Verify the existence and executability of CRUD_TB
-            if [[ ! -f "$crud_tb_path" ]]; then
-                echo "Error: File 'CRUD_TB' does not exist in $parent_dir."
+        echo "Checking file: $crud_tb_path"
+
+        # Verify the existence and executability of CRUD_TB
+        if [[ ! -f "$crud_tb_path" ]]; then
+            echo "Error: File 'CRUD_TB' does not exist in $parent_dir."
+            cd ..
+            continue
+        elif [[ ! -r "$crud_tb_path" ]]; then
+            echo "Error: 'CRUD_TB' script exists but is not readable."
+            chmod +r "$crud_tb_path"  # Attempt to fix permissions automatically
+            if [[ ! -r "$crud_tb_path" ]]; then
+                echo "Error: Failed to make 'CRUD_TB' readable. Check permissions."
                 cd ..
                 continue
-            elif [[ ! -x "$crud_tb_path" ]]; then
-                echo "Error: 'CRUD_TB' script exists but is not executable."
-                chmod +x "$crud_tb_path"  # Attempt to fix permissions automatically
-                if [[ ! -x "$crud_tb_path" ]]; then
-                    echo "Error: Failed to make 'CRUD_TB' executable. Check permissions."
-                    cd ..
-                    continue
-                fi
             fi
-
-            # Execute CRUD_TB script and exit the current menu
-            exec bash "$crud_tb_path"
-
-            # If the above exec fails for any reason, return to the parent directory
-            cd ..
-        else
-            echo "Error: Failed to access database directory."
         fi
-        ;;
+
+        # Source CRUD_TB script and stay in the same shell session
+        source "$crud_tb_path"
+
+        # After sourcing, return to the parent directory
+        cd ..
+    else
+        echo "Error: Failed to access database directory."
+    fi
+    ;;
+
 
     "DropDB")
         # Option to delete an existing database

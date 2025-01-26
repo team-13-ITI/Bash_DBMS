@@ -178,3 +178,11 @@ check_sudo_privileges() {
     fi
     return 0
 }
+
+check_exit() {
+    if [[ "$1" == "exit" ]]; then
+        echo "Returning to the main menu..."
+        return 1  # Return a non-zero exit code to indicate user wants to exit
+    fi
+    return 0  # Proceed normally if "exit" was not entered
+}
