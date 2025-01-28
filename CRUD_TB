@@ -228,80 +228,176 @@ while true; do
                 ;;
 
             "SelectFromTable")  
-                read -p "Enter Table Name: " table_name  
+                read -p "Enter Table Name: " table_name
                 if ! check_exit "$table_name"; then
-                    break  # Exit to main menu
+                    break
                 fi
                 
                 if [[ ! -f "$table_name" ]]; then
-                    echo "Table does not exist."
+                    echo "Table '$table_name' does not exist."
                     break
                 fi
 
                 metadata_file=".$table_name-metadata"
                 if [[ ! -f "$metadata_file" ]]; then
-                    echo "Metadata file for the table is missing."
+                    echo "Metadata file for '$table_name' is missing."
                     break
                 fi
 
-                echo "Available columns:"
-                awk -F: '{print NR ") " $1}' "$metadata_file"
+                # Read metadata into arrays
+                declare -A col_types
+                declare -A col_indices
+                index=1
+                while IFS=: read -r col_name col_type _; do
+                    col_types["${col_name,,}"]="$col_type"  # Case-insensitive keys
+                    col_indices["${col_name,,}"]="$index"
+                    ((index++))
+                done < "$metadata_file"
 
-                read -p "Enter column(s) to display (comma-separated or * for all): " columns
-                if ! check_exit "$columns"; then
-                    break  # Exit to main menu
-                fi
+                echo -e "\nAvailable Columns:"
+                awk -F: '{printf "%-15s %s\n", $1 " ("$2")", "Column " NR}' "$metadata_file"
 
-                read -p "Enter condition (e.g., column=value) or leave blank: " condition
-                if ! check_exit "$condition"; then
-                    break  # Exit to main menu
-                fi
+                # Column Selection
+                while true; do
+                    read -p "Enter columns (comma-separated, * for all): " columns
+                    if ! check_exit "$columns"; then
+                        break 2
+                    fi
 
-                read -p "Enter column to order by or leave blank: " order_by
-                if ! check_exit "$order_by"; then
-                    break  # Exit to main menu
-                fi
+                    if [[ "$columns" == "*" ]]; then
+                        selected_cols=($(awk -F: '{print $1}' "$metadata_file"))
+                        break
+                    else
+                        IFS=, read -ra selected_cols <<< "$columns"
+                        valid=1
+                        for col in "${selected_cols[@]}"; do
+                            if [[ -z "${col_indices[${col,,}]}" ]]; then
+                                echo "Column '$col' does not exist"
+                                valid=0
+                            fi
+                        done
+                        [[ $valid == 1 ]] && break
+                    fi
+                done
 
-                 # Prepare awk filters
-                awk_filter=""
-                if [[ -n "$columns" && "$columns" != "*" ]]; then
-                    cols_array=($(echo "$columns" | tr "," " "))
-                    for col in "${cols_array[@]}"; do
-                        col_index=$(awk -F: -v col="$col" '{if ($1 == col) print NR}' "$metadata_file")
-                        if [[ -z "$col_index" ]]; then
-                            echo "Column $col does not exist."
-                            break 2
+                # Condition Handling
+                while true; do
+                    read -p "Enter condition (e.g., 'age>25 AND name=John') or leave blank: " condition
+                    if ! check_exit "$condition"; then
+                        break 2
+                    fi
+
+                    if [[ -z "$condition" ]]; then
+                        awk_condition="1"  # Always true
+                        break
+                    fi
+
+                    # Split compound conditions
+                    IFS=' AND ' read -ra conditions <<< "$condition"
+                    awk_condition=""
+                    for cond in "${conditions[@]}"; do
+                        if [[ "$cond" =~ ^([^=<>!~]+)(=|!=|<|>|<=|>=|~)(.*)$ ]]; then
+                            col="${BASH_REMATCH[1]}"
+                            operator="${BASH_REMATCH[2]}"
+                            value="${BASH_REMATCH[3]}"
+                            col="${col// /}"
+
+                            # Case-insensitive column lookup
+                            col_lower="${col,,}"
+                            if [[ -z "${col_indices[$col_lower]}" ]]; then
+                                echo "Invalid column '$col' in condition"
+                                continue 2
+                            fi
+
+                            # Get column metadata
+                            col_index="${col_indices[$col_lower]}"
+                            col_type="${col_types[$col_lower]}"
+
+                            # Value formatting based on type
+                            if [[ "$col_type" == "string" ]]; then
+                                value="\"${value//\"/}\""  # Handle quotes
+                            elif [[ "$col_type" == "int" && ! "$value" =~ ^-?[0-9]+$ ]]; then
+                                echo "Invalid numeric value '$value' for column '$col'"
+                                continue 2
+                            fi
+
+                            # Build condition components
+                            case "$operator" in
+                                "=")  op="==" ;;
+                                "!=") op="!=" ;;
+                                "~")  op="~"  ;;  # For regex matches
+                                *)    op="$operator" ;;
+                            esac
+
+                            # Special handling for regex matches
+                            if [[ "$operator" == "~" ]]; then
+                                awk_condition+="\$$col_index $op /${value//\//}/"
+                            else
+                                awk_condition+="\$$col_index $op $value"
+                            fi
+
+                            awk_condition+=" && "
+                        else
+                            echo "Invalid condition format: '$cond'"
+                            continue 2
                         fi
-                        awk_filter+="\"$col_index\" "
                     done
-                    awk_filter="{print "$(echo "$awk_filter" | sed 's/ $//')"}"
+
+                    awk_condition="${awk_condition% && }"
+                    break
+                done
+
+                # Order By Handling
+                read -p "Enter ORDER BY (e.g., 'age DESC' or 'name ASC'): " order_by
+                if ! check_exit "$order_by"; then
+                    break
                 fi
 
-                condition_filter=""
-                if [[ -n "$condition" ]]; then
-                    cond_col=$(echo "$condition" | cut -d= -f1)
-                    cond_value=$(echo "$condition" | cut -d= -f2)
-                    cond_index=$(awk -F: -v col="$cond_col" '{if ($1 == col) print NR}' "$metadata_file")
-                    if [[ -z "$cond_index" ]]; then
-                        echo "Column $cond_col does not exist."
-                        break
-                    fi
-                    condition_filter="\$${cond_index} == \"$cond_value\""
-                fi
-
-                order_filter=""
+                sort_cmd=""
                 if [[ -n "$order_by" ]]; then
-                    order_index=$(awk -F: -v col="$order_by" '{if ($1 == col) print NR}' "$metadata_file")
-                    if [[ -z "$order_index" ]]; then
-                        echo "Column $order_by does not exist."
+                    read -r col order_dir <<< "$order_by"
+                    col_lower="${col,,}"
+                    if [[ -z "${col_indices[$col_lower]}" ]]; then
+                        echo "Invalid ORDER BY column '$col'"
                         break
                     fi
-                    order_filter=" | sort -t, -k$order_index"
+
+                    col_index="${col_indices[$col_lower]}"
+                    col_type="${col_types[$col_lower]}"
+
+                    # Determine sort options
+                    sort_opts="-k$col_index"
+                    [[ "${order_dir,,}" == "desc" ]] && sort_opts+="r"
+                    [[ "$col_type" == "int" ]] && sort_opts+="n"
+
+                    sort_cmd=" | sort -t, $sort_opts"
                 fi
 
-                # Combine filters
-                cmd="awk -F, '$condition_filter {print}' $table_name$order_filter"
+                # Build AWK command
+                awk_fields=()
+                for col in "${selected_cols[@]}"; do
+                    col_index="${col_indices[${col,,}]}"
+                    awk_fields+=("\$$col_index")
+                done
+
+                # Add headers
+                header=$(IFS=,; echo "${selected_cols[*]}")
+                header_script="BEGIN {print \"$header\"}; "
+
+                # Build final command
+                cmd="awk -F, '
+                    $header_script
+                    NR > 0 {  # Skip metadata line
+                        if ($awk_condition) {
+                            print $(IFS=,; echo "${awk_fields[*]}")
+                        }
+                    }
+                ' \"$table_name\" $sort_cmd | column -t -s,"
+
+                # Execute and format output
+                echo -e "\nQuery Results:"
                 eval "$cmd"
+                echo -e "\n$(wc -l < "$table_name") rows in set"
                 break
                 ;;
 
